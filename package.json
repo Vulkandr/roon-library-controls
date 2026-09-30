@@ -4,8 +4,8 @@
   "description": "Heart tracks and add them to your library over Roon's internal client protocol. Unofficial and experimental: works today, may break on any Roon update.",
   "license": "MIT",
   "author": "Vulkandr",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "files": [
     "dist",
     "README.md",
