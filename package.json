@@ -1,0 +1,34 @@
+{
+  "name": "roon-library-controls",
+  "version": "0.1.0",
+  "description": "Heart tracks and add them to your library over Roon's internal client protocol. Unofficial and experimental: works today, may break on any Roon update.",
+  "license": "MIT",
+  "author": "Vulkandr",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js",
+    "example": "tsc -p tsconfig.json && node dist/examples/heart-now-playing.js"
+  },
+  "keywords": [
+    "roon",
+    "roon-extension",
+    "favorites",
+    "library",
+    "stream-deck"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}
