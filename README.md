@@ -2,9 +2,28 @@
 
 Heart the track a Roon zone is playing, and add it (or its album) to your Roon library, from your own Node.js program.
 
-Roon's official extension API can't do either of these. This small library talks to the Core the way the Roon desktop app does, over Roon's internal protocol on port 9332. It works today (tested on Roon 2.73), and it is **unofficial and experimental**: Roon changes this protocol whenever they like, so any Roon update can break it without warning. Treat it as a nice-to-have feature, and give your users a way to turn it off.
+Roon's official extension API can't do either of these. This small library talks to the Core the way the Roon desktop app does, over Roon's internal protocol on port 9332. It works today (tested on Roon 2.73), but it is **unofficial, unsupported and experimental**. Please read the warning below before you use it.
 
 Built for the [Roon: Dialed Up](https://marketplace.elgato.com/product/roon-dialed-up-f76699d9-4266-4d4a-ad94-eaddd148daa9) Stream Deck plugin and [Roon: Toasted](https://github.com/Vulkandr/roon-toasted). Not affiliated with or endorsed by Roon Labs.
+
+## Read this first
+
+> [!WARNING]
+> **This library uses an internal Roon protocol that Roon does not support. Read this before you use it.**
+>
+> Brian Luczkiewicz of Roon Labs, in the [forum thread this work builds on](https://community.roonlabs.com/t/reverse-engineering-the-roon-desktop-clients-local-protocol-typescript-client-docs/321731): "This protocol is engineered as an internal interface to be used by trusted code, and is not hardened for 3rd party use." He also said the protocol is meant to be internal, that Roon changes it freely, and that misuse of it can easily cause memory or compute leaks in the Core. That applies to this library too.
+>
+> - **Any Roon update can break it, without warning.** It is tested on Roon 2.73 and nothing else. Don't build anything on it that you can't live without.
+> - **Used carelessly, it can hurt your Core.** Every connection is a full session on your Core, and the Core holds the objects it sends you until the session ends. This library cannot promise to cover every case Roon had in mind. Don't leave it running unattended against a Core you can't afford to restart, and watch your Core's memory the first time you use it.
+> - **It is an optional extra, not a foundation.** Make it opt-in or give your users an off switch, and when it fails, hide the controls instead of retrying.
+> - **Keep it on your LAN.** There is no authentication on this protocol, so never expose port 9332 beyond your own network.
+
+### What this library does to limit the risk
+
+- **A deliberately small surface.** It reads what a zone is playing, hearts and un-hearts, and adds to the library. It cannot ban, remove or delete anything, and nothing else is exposed.
+- **No blind retries.** Changes wait for the Core to confirm them, the library never retries calls on its own, and when the Core turns it down it throws `UnsupportedCoreError` so your app can stop and hide the feature.
+- **Sessions that don't pile up.** One connection per program. The client pings every 10 seconds so a quiet session isn't dropped and reopened over and over, and you should close and reconnect once a day (or when `objectCount` gets large) so the Core can let go of what it sent. See [Good to know](#good-to-know).
+- **Backing off is yours to do.** The library never reconnects by itself. Roon: Dialed Up and Roon: Toasted both retry after 5 s, 15 s, 60 s, then every 5 minutes.
 
 ## What it does
 
@@ -89,7 +108,7 @@ roon.close();
 
 ## How it works, briefly
 
-The Roon desktop app talks to the Core over a binary remoting protocol (`Sooloos.Broker.Remoting`) on TCP 9332. After a short handshake (the "server broker id" is just the Core id in .NET GUID byte order) the Core streams its object graph: zones, what they're playing, tracks and albums with their heart and library flags. Hearting is `Library::FavoriteOrBan` on the track object; adding is `Library::AddToLibrary`. The protocol was reverse-engineered by [Arthur Soares](https://github.com/arthursoares/roon-api-reverse-engineering); this package is a small, cleaned-up port of the parts needed for these features. Roon's CTO has [said](https://community.roonlabs.com/t/reverse-engineering-the-roon-desktop-clients-local-protocol-typescript-client-docs/321731) they don't mind interoperability tinkering against your own Core, and also that the protocol is internal, changes freely, and isn't hardened for third parties. Read that before building on this.
+The Roon desktop app talks to the Core over a binary remoting protocol (`Sooloos.Broker.Remoting`) on TCP 9332. After a short handshake (the "server broker id" is just the Core id in .NET GUID byte order) the Core streams its object graph: zones, what they're playing, tracks and albums with their heart and library flags. Hearting is `Library::FavoriteOrBan` on the track object; adding is `Library::AddToLibrary`. The protocol was reverse-engineered by [Arthur Soares](https://github.com/arthursoares/roon-api-reverse-engineering); this package is a small, cleaned-up port of the parts needed for these features. Brian Luczkiewicz, Roon Labs founder, [said](https://community.roonlabs.com/t/reverse-engineering-the-roon-desktop-clients-local-protocol-typescript-client-docs/321731) in the forum thread: "We don’t mind people tinkering with their own systems, and reverse engineering for the purpose of interoperability is generally not restricted legally unless encryption was broken, which is not the case here, so we are not going to do anything to interfere with this project." He was just as clear about the risks, which are in the warning at the top of this page. Read it before building on this.
 
 ## Developing
 
