@@ -18,8 +18,10 @@ On purpose it does **not** ban, remove from the library, or delete anything.
 ## Install
 
 ```
-npm install roon-library-controls
+npm install github:Vulkandr/roon-library-controls
 ```
+
+Full reference, with every option, method, event and error: [docs/API.md](docs/API.md).
 
 Node 18 or newer. No dependencies.
 
