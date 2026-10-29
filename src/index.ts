@@ -6,6 +6,6 @@ export {
   NothingPlayingError,
   readState,
 } from './client';
-export type { LibraryClientOptions, LibraryClientEvents, TrackInfo, AlbumInfo, AddMode } from './client';
+export type { LibraryClientOptions, LibraryClientEvents, TrackInfo, AlbumInfo, AddMode, PlaylistInfo, PlaylistKind, PlayHow } from './client';
 export { UnsupportedCoreError, brokerIdFromCoreId, DEFAULT_PORT } from './connection';
 export { CallError } from './remoting';

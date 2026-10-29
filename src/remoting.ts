@@ -126,8 +126,13 @@ export class RemotingClient {
     return id;
   }
 
-  /** Serializes a by-value struct with the given members, declaring the type as needed. */
-  struct(typeName: string, members: { name: string; propType: PropertyType; value: Buffer }[]): Buffer {
+  /**
+   * Serializes a by-value struct, declaring the type as needed. A type is
+   * declared once per session with the members of its first use, so callers
+   * must always pass the same full member list for a given type name, and
+   * leave `value` undefined for members they don't set (sent sparse).
+   */
+  struct(typeName: string, members: { name: string; propType: PropertyType; value?: Buffer }[]): Buffer {
     const typeId = this.defineType(
       typeName,
       members.map((m) => ({ name: m.name, propType: m.propType }))

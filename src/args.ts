@@ -93,9 +93,12 @@ export interface StructField {
  * we declared for the type (RemotingClient.defineType). Members are matched by
  * name on the Core, in the order they were declared (1-based indexes here).
  */
-export function inlineStruct(typeId: number, values: Buffer[]): Buffer {
+export function inlineStruct(typeId: number, values: (Buffer | undefined)[]): Buffer {
   const fw = new BinaryWriter();
-  values.forEach((v, i) => fw.flexInt(i + 1).bytes(v));
+  // Sparse: a member left undefined is skipped and keeps its default on the Core.
+  values.forEach((v, i) => {
+    if (v !== undefined) fw.flexInt(i + 1).bytes(v);
+  });
   fw.flexInt(0);
   const body = fw.toBuffer();
   return new BinaryWriter().long(1).flexInt(typeId).flexInt(body.length).bytes(body).toBuffer();

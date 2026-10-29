@@ -42,6 +42,22 @@ export interface LibraryClientOptions {
 
 export type AddMode = 'track' | 'album';
 
+/** Where a playlist comes from, from Roon's PlaylistType. Unknown types come through as 'other'. */
+export type PlaylistKind = 'roon' | 'smart' | 'qobuz' | 'tidal' | 'editorial' | 'itunes' | 'file' | 'kkbox' | 'other';
+
+export interface PlaylistInfo {
+  name: string;
+  kind: PlaylistKind;
+  /** The raw PlaylistType number, for kinds this package doesn't name. */
+  type: number | null;
+  /** Roon's durable id for the playlist (PlaylistId), as hex. Survives reconnects, unlike object ids. */
+  playlistId: string | null;
+  trackCount: number | null;
+}
+
+/** How to play: now (replacing the queue), next, or at the end of the queue. */
+export type PlayHow = 'now' | 'next' | 'queue';
+
 export interface AlbumInfo {
   title: string;
   /** Roon's id for the album across the Core ("RoonAlbumId"), as a string. */
@@ -99,7 +115,25 @@ const SIG = {
   addTrack: 'Sooloos.Broker.Api.Library::AddToLibrary(Sooloos.Broker.Api.Profile, Sooloos.Broker.Api.TrackBase)',
   addAlbum: 'Sooloos.Broker.Api.Library::AddToLibrary(Sooloos.Broker.Api.Profile, Sooloos.Broker.Api.AlbumBase)',
   getTrackLite: 'Sooloos.Broker.Api.Library::GetTrackLite(long, Base.ResultCallback<Sooloos.Broker.Api.TrackLite>)',
+  playPlaylist:
+    'Sooloos.Broker.Api.Transport::PlayPlaylist(Sooloos.Broker.Api.Zone, System.Sooid, Sooloos.Broker.Api.PlayParameters, Sooloos.Broker.Api.Playlist, Sooloos.Broker.Api.PlaylistItem, Base.ResultCallback<Sooloos.Broker.Api.PlayFeedback>)',
 } as const;
+
+/** PlaylistType on the wire. */
+const PLAYLIST_KIND: Record<number, PlaylistKind> = {
+  1: 'itunes',
+  5: 'roon',
+  6: 'roon',
+  10: 'tidal',
+  11: 'file',
+  12: 'qobuz',
+  13: 'editorial',
+  14: 'kkbox',
+  15: 'smart',
+};
+
+/** PlayPriority on the wire. */
+const PRIORITY: Record<PlayHow, number> = { now: 0, next: 3, queue: 4 };
 
 const FAVORITE = 1;
 const NOT_FAVORITE = 0;
@@ -469,6 +503,76 @@ export class RoonLibraryClient extends EventEmitter {
     return confirmed ?? this.describe(zoneId, this.requireTrack(zoneId));
   }
 
+  // --- playlists ---
+
+  /**
+   * Every playlist the Core knows (Roon's own, smart, Qobuz, TIDAL...), in
+   * the order the Core lists them. Unlike the extension API this tells the
+   * kinds apart, and gives each one a durable id.
+   */
+  playlists(): PlaylistInfo[] {
+    return this.playlistObjects().map(playlistInfo);
+  }
+
+  /**
+   * Plays a playlist on a zone, the way Roon's own app does
+   * (Transport::PlayPlaylist), so it also works for smart playlists, which
+   * the extension API can't play. `playlist` is a playlistId from
+   * playlists(), or an exact name (case-insensitive; the first match wins).
+   */
+  async playPlaylist(zoneId: string, playlist: string, options: { how?: PlayHow; shuffle?: boolean } = {}): Promise<PlaylistInfo> {
+    const remoting = this.requireRemoting();
+    const zone = this.zoneObject(zoneId);
+    if (!zone) throw new Error(`unknown zone ${zoneId}`);
+    const profile = this.profileSooid();
+    const transport = this.serviceOid('Transport');
+    if (!profile || transport === undefined) throw new UnsupportedCoreError('no Transport service or Profile in the graph');
+
+    const all = this.playlistObjects();
+    const wanted = playlist.toLowerCase();
+    const target =
+      all.find((p) => {
+        const id = field(p, 'PlaylistId');
+        return Buffer.isBuffer(id) && id.toString('hex') === wanted;
+      }) ?? all.find((p) => String(field(p, 'Name') ?? '').toLowerCase() === wanted);
+    if (!target) throw new Error(`no playlist "${playlist}"`);
+
+    const how = options.how ?? 'now';
+    // Always the same two members (the type is declared once per session with its first use's
+    // members), each sent only when it differs from the default.
+    const members = [
+      {
+        name: 'Sooloos.Broker.Api.PlayPriority Sooloos.Broker.Api.PlayParameters::Priority',
+        propType: PropertyType.Enum,
+        value: PRIORITY[how] !== 0 ? new BinaryWriter().flexInt(PRIORITY[how]).toBuffer() : undefined,
+      },
+      {
+        name: 'bool Sooloos.Broker.Api.PlayParameters::Shuffle',
+        propType: PropertyType.Bool,
+        value: options.shuffle ? new BinaryWriter().boolean(true).toBuffer() : undefined,
+      },
+    ];
+    const args = Buffer.concat([
+      buildArgs([Arg.ref(zone.oid), Arg.sooid(profile)]),
+      remoting.struct('Sooloos.Broker.Api.PlayParameters', members),
+      // From the first item: no PlaylistItem.
+      buildArgs([Arg.ref(target.oid), Arg.ref(0)]),
+    ]);
+    const res = await remoting.callMethod(transport, SIG.playPlaylist, args);
+    const info = playlistInfo(target);
+    this.log(`PlayPlaylist "${field(target, 'Name')}" (${how}${options.shuffle ? ', shuffled' : ''}) -> ${res.success ? 'ok' : res.status}`);
+    if (!res.success) throw new CallError('PlayPlaylist', res.status);
+    return info;
+  }
+
+  private playlistObjects(): RoonObject[] {
+    const service = this.graph.findByType('Playlists')[0];
+    const list = this.graph.deref(field(service, 'AllPlaylists'));
+    return (list?.items ?? [])
+      .map((oid) => this.graph.getObject(oid))
+      .filter((p): p is RoonObject => !!p);
+  }
+
   // --- internals ---
 
   private requireRemoting(): RemotingClient {
@@ -537,6 +641,20 @@ export class RoonLibraryClient extends EventEmitter {
       check();
     });
   }
+}
+
+function playlistInfo(p: RoonObject): PlaylistInfo {
+  const type = field(p, 'Type');
+  const typeNum = typeof type === 'number' ? type : null;
+  const count = field(p, 'TrackCount') ?? field(p, 'ItemCount');
+  const id = field(p, 'PlaylistId');
+  return {
+    name: String(field(p, 'Name') ?? ''),
+    kind: (typeNum !== null && PLAYLIST_KIND[typeNum]) || 'other',
+    type: typeNum,
+    playlistId: Buffer.isBuffer(id) ? id.toString('hex') : null,
+    trackCount: typeof count === 'number' ? count : null,
+  };
 }
 
 /** The zone id string (the extension API's zone_id) from a Zone object. */

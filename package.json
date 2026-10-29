@@ -1,6 +1,6 @@
 {
   "name": "roon-library-controls",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Heart tracks and add them to your library over Roon's internal client protocol. Unofficial and experimental: works today, may break on any Roon update.",
   "license": "MIT",
   "author": "Vulkandr",
